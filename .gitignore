@@ -1,0 +1,23 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Environments
+.env
+venv/
+env/
+
+# Large media files and outputs
+outputs/*.mp4
+samples/*.mp4
+samples/*.avi
+samples/*.mkv
+samples/*.mov
+
+# IDE / OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
