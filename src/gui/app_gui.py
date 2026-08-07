@@ -33,8 +33,8 @@ class VideoObjectRemoverApp:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Công Cụ Xóa / Che Đối Tượng Video - AI Studio")
-        self.root.geometry("1180x760")
-        self.root.minsize(950, 650)
+        self.root.geometry("1240x840")
+        self.root.minsize(950, 600)
 
         # Trạng thái ứng dụng (State)
         self.video_path = None
@@ -94,7 +94,7 @@ class VideoObjectRemoverApp:
 
     def _build_ui(self):
         header_frame = ttk.Frame(self.root)
-        header_frame.pack(fill="x", padx=15, pady=10)
+        header_frame.pack(fill="x", padx=15, pady=8)
 
         lbl_title = ttk.Label(
             header_frame,
@@ -106,9 +106,36 @@ class VideoObjectRemoverApp:
         main_paned = ttk.Frame(self.root)
         main_paned.pack(fill="both", expand=True, padx=15, pady=5)
 
-        left_frame = ttk.Frame(main_paned, style="Card.TFrame", width=360)
-        left_frame.pack(side="left", fill="both", padx=(0, 10), pady=5)
-        left_frame.pack_propagate(False)
+        # Thêm cuộn Scrollbar cho cột bảng điều khiển bên trái
+        left_container = ttk.Frame(main_paned, style="Card.TFrame", width=380)
+        left_container.pack(side="left", fill="both", padx=(0, 10), pady=5)
+        left_container.pack_propagate(False)
+
+        left_canvas = tk.Canvas(left_container, bg=self.bg_card, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(left_container, orient="vertical", command=left_canvas.yview)
+
+        left_frame = ttk.Frame(left_canvas, style="Card.TFrame")
+        left_frame.bind(
+            "<Configure>",
+            lambda e: left_canvas.configure(scrollregion=left_canvas.bbox("all"))
+        )
+
+        canvas_window = left_canvas.create_window((0, 0), window=left_frame, anchor="nw")
+        left_canvas.configure(yscrollcommand=scrollbar.set)
+
+        def _on_left_canvas_resize(event):
+            left_canvas.itemconfig(canvas_window, width=event.width)
+
+        left_canvas.bind("<Configure>", _on_left_canvas_resize)
+
+        scrollbar.pack(side="right", fill="y")
+        left_canvas.pack(side="left", fill="both", expand=True)
+
+        def _on_mousewheel(event):
+            if left_canvas.winfo_exists():
+                left_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        left_canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         right_frame = ttk.Frame(main_paned, style="Card.TFrame")
         right_frame.pack(side="right", fill="both", expand=True, pady=5)
@@ -137,13 +164,92 @@ class VideoObjectRemoverApp:
         ttk.Label(sec2, text="Chế độ:", style="Card.TLabel").pack(anchor="w", pady=(3, 1))
 
         self.combo_mode = ttk.Combobox(sec2, state="readonly", values=[
-            "Inpaint - Xoa doi tuong & tai tao nen",
-            "Masking - Phu khoi mau che doi tuong",
-            "Blur - Lam mo manh (Gaussian Blur)",
-            "Crop - Cat vien le khong chua doi tuong"
+            "Inpaint - Xóa đối tượng & tái tạo nền",
+            "Masking - Phủ khối màu che đối tượng",
+            "Blur - Làm mờ mạnh (Gaussian Blur)",
+            "Crop - Cắt viền lề không chứa đối tượng",
+            "Enhance Light - Tăng sáng vùng tối & nét"
         ])
-        self.combo_mode.current(0)
+        self.combo_mode.current(4)  # Mặc định chọn chế độ Enhance Light
         self.combo_mode.pack(fill="x", pady=2)
+        self.combo_mode.bind("<<ComboboxSelected>>", self._on_mode_change)
+
+        # Enhance Light Settings Panel (Mặc định hiển thị)
+        self.enhance_frame = ttk.Frame(sec2, style="Card.TFrame")
+
+        ttk.Label(self.enhance_frame, text="📍 Phạm vi làm sáng:", style="Header.TLabel", foreground="#00d2ff").pack(anchor="w", pady=(4, 2))
+        
+        self.var_enhance_scope = tk.StringVar(value="target_roi")
+        r1 = ttk.Radiobutton(
+            self.enhance_frame,
+            text="🎯 Chỉ làm sáng VÙNG ĐƯỢC CHỌN (Kéo khoanh ô)",
+            value="target_roi",
+            variable=self.var_enhance_scope,
+            command=self._redraw_canvas
+        )
+        r1.pack(anchor="w", pady=1)
+
+        r2 = ttk.Radiobutton(
+            self.enhance_frame,
+            text="🌐 Làm sáng TOÀN BỘ (Loại trừ Camera phụ)",
+            value="all",
+            variable=self.var_enhance_scope,
+            command=self._redraw_canvas
+        )
+        r2.pack(anchor="w", pady=1)
+
+        # 1. Shadow Lift
+        f_lift = ttk.Frame(self.enhance_frame, style="Card.TFrame")
+        f_lift.pack(fill="x", pady=(4, 1))
+        ttk.Label(f_lift, text="💡 Kích sáng nền đen (Shadow Lift):", style="Card.TLabel").pack(side="left")
+        self.lbl_val_shadow_lift = ttk.Label(f_lift, text="50", style="Card.TLabel", foreground="#00ffaa", font=("Segoe UI", 10, "bold"))
+        self.lbl_val_shadow_lift.pack(side="right")
+
+        self.scale_shadow_lift = ttk.Scale(self.enhance_frame, from_=0, to=100, orient="horizontal", command=self._on_shadow_lift_change)
+        self.scale_shadow_lift.set(50)
+        self.scale_shadow_lift.pack(fill="x", pady=1)
+
+        # 2. Dark Boost
+        f_dark = ttk.Frame(self.enhance_frame, style="Card.TFrame")
+        f_dark.pack(fill="x", pady=(4, 1))
+        ttk.Label(f_dark, text="☀️ Tăng sáng vùng tối (Dark Boost):", style="Card.TLabel").pack(side="left")
+        self.lbl_val_dark_boost = ttk.Label(f_dark, text="50", style="Card.TLabel", foreground="#00ffaa", font=("Segoe UI", 10, "bold"))
+        self.lbl_val_dark_boost.pack(side="right")
+
+        self.scale_dark_boost = ttk.Scale(self.enhance_frame, from_=0, to=100, orient="horizontal", command=self._on_dark_boost_change)
+        self.scale_dark_boost.set(50)
+        self.scale_dark_boost.pack(fill="x", pady=1)
+
+        # 3. CLAHE
+        f_clahe = ttk.Frame(self.enhance_frame, style="Card.TFrame")
+        f_clahe.pack(fill="x", pady=(4, 1))
+        ttk.Label(f_clahe, text="🔍 Độ tương phản (CLAHE):", style="Card.TLabel").pack(side="left")
+        self.lbl_val_clahe = ttk.Label(f_clahe, text="40", style="Card.TLabel", foreground="#00ffaa", font=("Segoe UI", 10, "bold"))
+        self.lbl_val_clahe.pack(side="right")
+
+        self.scale_clahe = ttk.Scale(self.enhance_frame, from_=0, to=100, orient="horizontal", command=self._on_clahe_change)
+        self.scale_clahe.set(40)
+        self.scale_clahe.pack(fill="x", pady=1)
+
+        # 4. Sharpen
+        f_sharpen = ttk.Frame(self.enhance_frame, style="Card.TFrame")
+        f_sharpen.pack(fill="x", pady=(4, 1))
+        ttk.Label(f_sharpen, text="✨ Độ sắc nét (Sharpen):", style="Card.TLabel").pack(side="left")
+        self.lbl_val_sharpen = ttk.Label(f_sharpen, text="20", style="Card.TLabel", foreground="#00ffaa", font=("Segoe UI", 10, "bold"))
+        self.lbl_val_sharpen.pack(side="right")
+
+        self.scale_sharpen = ttk.Scale(self.enhance_frame, from_=0, to=100, orient="horizontal", command=self._on_sharpen_change)
+        self.scale_sharpen.set(20)
+        self.scale_sharpen.pack(fill="x", pady=1)
+
+        self.var_auto_protect_pip = tk.BooleanVar(value=True)
+        self.chk_auto_pip = ttk.Checkbutton(
+            self.enhance_frame,
+            text="🔒 Mặc định khóa góc phải (Camera phụ 2)",
+            variable=self.var_auto_protect_pip,
+            command=self._redraw_canvas
+        )
+        self.chk_auto_pip.pack(anchor="w", pady=4)
 
         ttk.Label(sec2, text="Padding mở rộng ROI (pixel):", style="Card.TLabel").pack(anchor="w", pady=(5, 1))
         self.spin_padding = ttk.Spinbox(sec2, from_=0, to=50, increment=2)
@@ -231,6 +337,9 @@ class VideoObjectRemoverApp:
         self.canvas.bind("<B1-Motion>", self._on_mouse_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_mouse_up)
         self.canvas.bind("<Configure>", self._on_canvas_resize)
+
+        # Kích hoạt hiển thị chế độ mặc định sau khi toàn bộ widget đã tạo xong
+        self._on_mode_change()
 
     def _browse_video(self):
         initial_dir = os.path.join(ROOT_DIR, "samples") if os.path.exists(os.path.join(ROOT_DIR, "samples")) else None
@@ -333,7 +442,6 @@ class VideoObjectRemoverApp:
         self.current_frame_img = frame
         self.slider_frame.set(self.current_frame_idx)
         self._redraw_canvas()
-
         t_elapsed_ms = (time.perf_counter() - t_start) * 1000.0
         target_delay_ms = (1000.0 / self.fps) if self.fps > 0 else 33.3
         remaining_delay_ms = max(1, int(target_delay_ms - t_elapsed_ms))
@@ -347,6 +455,67 @@ class VideoObjectRemoverApp:
         target_frame = max(0, min(self.total_frames - 1, self.current_frame_idx + frame_delta))
         self.slider_frame.set(target_frame)
         self._load_frame(target_frame)
+
+    def _on_mode_change(self, event=None):
+        if not hasattr(self, 'combo_mode') or not hasattr(self, 'enhance_frame'):
+            return
+
+        mode_idx = self.combo_mode.current()
+        selected_mode = ProcessingMode.ALL_MODES[mode_idx] if mode_idx < len(ProcessingMode.ALL_MODES) else ProcessingMode.INPAINT
+
+        if selected_mode == ProcessingMode.ENHANCE_LIGHT:
+            self.enhance_frame.pack(fill="x", pady=5)
+            if hasattr(self, 'lbl_roi'):
+                self.lbl_roi.config(
+                    text="Chế độ Tăng Sáng: Kéo chuột khoanh ô để chọn VÙNG CHỈ ĐỊNH cần tăng sáng.",
+                    foreground="#00ffaa"
+                )
+        else:
+            self.enhance_frame.pack_forget()
+            if hasattr(self, 'lbl_roi'):
+                self.lbl_roi.config(
+                    text="Hãy dùng chuột kéo khoanh vùng đối tượng trên hình bên phải",
+                    foreground="#ffcc00"
+                )
+        if hasattr(self, 'canvas'):
+            self._redraw_canvas()
+
+    def _on_shadow_lift_change(self, val):
+        if hasattr(self, 'lbl_val_shadow_lift'):
+            self.lbl_val_shadow_lift.config(text=str(int(float(val))))
+        self._on_enhance_param_change()
+
+    def _on_dark_boost_change(self, val):
+        if hasattr(self, 'lbl_val_dark_boost'):
+            self.lbl_val_dark_boost.config(text=str(int(float(val))))
+        self._on_enhance_param_change()
+
+    def _on_clahe_change(self, val):
+        if hasattr(self, 'lbl_val_clahe'):
+            self.lbl_val_clahe.config(text=str(int(float(val))))
+        self._on_enhance_param_change()
+
+    def _on_sharpen_change(self, val):
+        if hasattr(self, 'lbl_val_sharpen'):
+            self.lbl_val_sharpen.config(text=str(int(float(val))))
+        self._on_enhance_param_change()
+
+    def _on_enhance_param_change(self):
+        if not self.is_processing and self.current_frame_img is not None:
+            self._redraw_canvas()
+
+    def _get_effective_exclude_roi(self):
+        """Lấy vùng camera phụ cần bảo vệ (Exclude ROI)."""
+        if hasattr(self, 'var_auto_protect_pip') and self.var_auto_protect_pip.get():
+            w = self.orig_w
+            h = self.orig_h
+            if w > 0 and h > 0:
+                pw = int(w * 0.35)
+                ph = int(h * 0.40)
+                px = w - pw
+                py = 0
+                return (px, py, pw, ph)
+        return None
 
     def _on_slider_move(self, val: str):
         if self.is_processing:
@@ -381,8 +550,32 @@ class VideoObjectRemoverApp:
         self.offset_x = (cw - disp_w) // 2
         self.offset_y = (ch - disp_h) // 2
 
-        # OpenCV C++ Bilinear Resize: ~10x faster than PIL LANCZOS (0.5ms vs 25ms)
-        resized_bgr = cv2.resize(self.current_frame_img, (disp_w, disp_h), interpolation=cv2.INTER_LINEAR)
+        # Kiểm tra chế độ ENHANCE_LIGHT để hiển thị live preview
+        mode_idx = self.combo_mode.current()
+        selected_mode = ProcessingMode.ALL_MODES[mode_idx] if mode_idx < len(ProcessingMode.ALL_MODES) else ProcessingMode.INPAINT
+
+        frame_to_disp = self.current_frame_img
+        if selected_mode == ProcessingMode.ENHANCE_LIGHT:
+            exclude = self._get_effective_exclude_roi()
+            scope = self.var_enhance_scope.get() if hasattr(self, 'var_enhance_scope') else "target_roi"
+            target_r = self.roi if scope == "target_roi" else None
+
+            dark_b = float(self.scale_dark_boost.get())
+            clahe_v = float(self.scale_clahe.get())
+            sharpen_v = float(self.scale_sharpen.get())
+            shadow_l = float(self.scale_shadow_lift.get()) if hasattr(self, 'scale_shadow_lift') else 40.0
+
+            frame_to_disp = VideoProcessor.enhance_lighting_and_contrast(
+                frame=self.current_frame_img,
+                dark_boost=dark_b,
+                clahe_amount=clahe_v,
+                sharpen_amount=sharpen_v,
+                shadow_lift=shadow_l,
+                target_roi=target_r,
+                exclude_roi=exclude
+            )
+
+        resized_bgr = cv2.resize(frame_to_disp, (disp_w, disp_h), interpolation=cv2.INTER_LINEAR)
         rgb_img = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2RGB)
         resized_img = Image.fromarray(rgb_img)
 
@@ -391,7 +584,27 @@ class VideoObjectRemoverApp:
         self.canvas.delete("all")
         self.canvas.create_image(self.offset_x, self.offset_y, anchor="nw", image=self.display_image)
 
-        if self.roi:
+        if selected_mode == ProcessingMode.ENHANCE_LIGHT:
+            scope = self.var_enhance_scope.get() if hasattr(self, 'var_enhance_scope') else "target_roi"
+            if scope == "target_roi" and self.roi:
+                rx, ry, rw, rh = self.roi
+                cx1 = self.offset_x + int(rx / self.disp_scale_w)
+                cy1 = self.offset_y + int(ry / self.disp_scale_h)
+                cx2 = cx1 + int(rw / self.disp_scale_w)
+                cy2 = cy1 + int(rh / self.disp_scale_h)
+                self.canvas.create_rectangle(cx1, cy1, cx2, cy2, outline="#00ffaa", width=3, tag="roi")
+                self.canvas.create_text(cx1 + 5, cy1 + 5, anchor="nw", text="[Vùng Kích Sáng Cụ Thể]", fill="#00ffaa", font=("Segoe UI", 9, "bold"))
+
+            exclude = self._get_effective_exclude_roi()
+            if exclude:
+                ex, ey, ew, eh = exclude
+                cx1 = self.offset_x + int(ex / self.disp_scale_w)
+                cy1 = self.offset_y + int(ey / self.disp_scale_h)
+                cx2 = cx1 + int(ew / self.disp_scale_w)
+                cy2 = cy1 + int(eh / self.disp_scale_h)
+                self.canvas.create_rectangle(cx1, cy1, cx2, cy2, outline="#ff4444", width=3, dash=(6, 4), tag="exclude_roi")
+                self.canvas.create_text(cx1 + 5, cy1 + 5, anchor="nw", text="[Camera Phụ - Khóa Sáng]", fill="#ff4444", font=("Segoe UI", 9, "bold"))
+        elif self.roi:
             rx, ry, rw, rh = self.roi
             cx1 = self.offset_x + int(rx / self.disp_scale_w)
             cy1 = self.offset_y + int(ry / self.disp_scale_h)
@@ -428,7 +641,8 @@ class VideoObjectRemoverApp:
 
         if w < 5 or h < 5:
             self.roi = None
-            self.lbl_roi.config(text="Kich thuoc qua nho. Hay keo chon lai!", foreground="#ff5555")
+            self.lbl_roi.config(text="Kích thước quá nhỏ. Hãy kéo chọn lại!", foreground="#ff5555")
+            self._redraw_canvas()
             return
 
         orig_x = int(x1 * self.disp_scale_w)
@@ -442,22 +656,23 @@ class VideoObjectRemoverApp:
         orig_h = min(orig_h, self.orig_h - orig_y)
 
         self.roi = (orig_x, orig_y, orig_w, orig_h)
-        self.lbl_roi.config(text=f"ROI: X={orig_x}, Y={orig_y}, W={orig_w}, H={orig_h}", foreground="#00ffaa")
+        self.lbl_roi.config(text=f"Vùng kích sáng chỉ định: X={orig_x}, Y={orig_y}, W={orig_w}, H={orig_h}", foreground="#00ffaa")
 
         self.start_x = None
         self.start_y = None
+        self._redraw_canvas()
 
     def _start_process_thread(self):
         if not self.video_path:
-            messagebox.showwarning("Canh bao", "Vui long chon file video dau vao truoc!")
+            messagebox.showwarning("Cảnh báo", "Vui lòng chọn file video đầu vào trước!")
             return
 
         mode_idx = self.combo_mode.current()
         mode_keys = ProcessingMode.ALL_MODES
-        selected_mode = mode_keys[mode_idx]
+        selected_mode = mode_keys[mode_idx] if mode_idx < len(mode_keys) else ProcessingMode.INPAINT
 
-        if not self.roi and selected_mode != ProcessingMode.CROP:
-            messagebox.showwarning("Canh bao", "Vui long khoanh vung doi tuong tren hinh truoc khi bat dau!")
+        if not self.roi and selected_mode not in (ProcessingMode.CROP, ProcessingMode.ENHANCE_LIGHT):
+            messagebox.showwarning("Cảnh báo", "Vui lòng khoanh vùng đối tượng trên hình trước khi bắt đầu!")
             return
 
         self._pause_preview()
@@ -467,7 +682,7 @@ class VideoObjectRemoverApp:
         self.btn_start.config(state="disabled")
         self.btn_stop.config(state="normal")
         self.slider_frame.config(state="disabled")
-        self.lbl_status.config(text="Trang thai: Dang xu ly video...", foreground="#00d2ff")
+        self.lbl_status.config(text="Trạng thái: Đang xử lý video...", foreground="#00d2ff")
 
         thread = threading.Thread(target=self._run_video_processing, daemon=True)
         thread.start()
@@ -475,13 +690,22 @@ class VideoObjectRemoverApp:
     def _stop_process(self):
         if self.is_processing:
             self.stop_requested = True
-            self.lbl_status.config(text="Trang thai: Dang dung xu ly...", foreground="#ff5555")
+            self.lbl_status.config(text="Trạng thái: Đang dừng xử lý...", foreground="#ff5555")
 
     def _run_video_processing(self):
         try:
             mode_idx = self.combo_mode.current()
-            mode = ProcessingMode.ALL_MODES[mode_idx]
+            mode = ProcessingMode.ALL_MODES[mode_idx] if mode_idx < len(ProcessingMode.ALL_MODES) else ProcessingMode.INPAINT
             padding = int(self.spin_padding.get())
+
+            dark_boost = float(self.scale_dark_boost.get()) if hasattr(self, 'scale_dark_boost') else 50.0
+            clahe_amount = float(self.scale_clahe.get()) if hasattr(self, 'scale_clahe') else 40.0
+            sharpen_amount = float(self.scale_sharpen.get()) if hasattr(self, 'scale_sharpen') else 20.0
+            shadow_lift = float(self.scale_shadow_lift.get()) if hasattr(self, 'scale_shadow_lift') else 40.0
+
+            scope = self.var_enhance_scope.get() if hasattr(self, 'var_enhance_scope') else "target_roi"
+            target_r = self.roi if (mode == ProcessingMode.ENHANCE_LIGHT and scope == "target_roi") else None
+            exclude_r = self._get_effective_exclude_roi() if mode == ProcessingMode.ENHANCE_LIGHT else self.roi
 
             try:
                 start_t = float(self.entry_start_time.get().strip() or 0.0)
@@ -507,6 +731,12 @@ class VideoObjectRemoverApp:
                 padding=padding,
                 start_time=start_t,
                 end_time=end_t,
+                dark_boost=dark_boost,
+                clahe_amount=clahe_amount,
+                sharpen_amount=sharpen_amount,
+                shadow_lift=shadow_lift,
+                target_roi=target_r,
+                exclude_roi=exclude_r,
                 progress_callback=gui_progress,
                 stop_checker=check_cancelled
             )

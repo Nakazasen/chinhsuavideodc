@@ -16,6 +16,11 @@ samples/*.avi
 samples/*.mkv
 samples/*.mov
 
+# Local datasets and generated knowledge-graph artifacts
+samples/LogiCapture/
+samples/LogiCapture.7z
+graphify-out/
+
 # IDE / OS files
 .vscode/
 .idea/
