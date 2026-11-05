@@ -83,7 +83,31 @@ python main.py
 
 ---
 
-### 2. Khởi Chạy Công Cụ Dòng Lệnh (CLI)
+### 2. Ghép Nối Nhiều Video Thành 1 Video
+
+#### Cách 1: Sử dụng Giao diện GUI (Tab 2)
+1. Khởi chạy `python main.py`.
+2. Chuyển sang tab **`🎞️ 2. Ghép Nối Nhiều Video (Merger)`**.
+3. Nhấn **`➕ Thêm Video...`** để chọn các file video cần ghép.
+4. Sử dụng các nút **`⬆️ Di Chuyển Lên`**, **`⬇️ Di Chuyển Xuống`**, **`❌ Xóa Đã Chọn`** để sắp xếp thứ tự ghép mong muốn.
+5. Lựa chọn **Độ phân giải đầu ra** (Tự động, Full HD 1080p, 720p, 4K, 9:16), bật/tắt **Letterbox** và gắn **Timeline OSD**.
+6. Nhấn **`🚀 BẮT ĐẦU GHÉP VIDEO`**.
+
+#### Cách 2: Sử dụng Dòng Lệnh (CLI)
+```bash
+# Ghép nhanh danh sách video bằng script tiện ích merge_videos.py
+python merge_videos.py -i video1.mp4 video2.mp4 video3.mp4 -o outputs/merged_output.mp4
+
+# Ghép video với chuẩn hóa kích thước 1080p Full HD và gắn Timeline OSD
+python merge_videos.py -i video1.mp4 video2.mp4 -W 1920 -H 1080 --timeline --timeline-mode elapsed
+
+# Hoặc sử dụng qua entry point main.py
+python main.py --cli --concat video1.mp4 video2.mp4 --output outputs/merged_video.mp4
+```
+
+---
+
+### 3. Khởi Chạy Công Cụ Dòng Lệnh Xóa / Che Đối Tượng (CLI)
 
 Sử dụng cờ `--cli` khi chạy file `main.py`:
 
@@ -102,4 +126,4 @@ python main.py --cli --input samples/sample1.mp4 --mode crop --roi 400 0 100 100
 
 ## 📐 Tài Liệu Kỹ Thuật & Handover
 
-Chi tiết mô hình kiến trúc MVP, sơ đồ luồng dữ liệu Mermaid (Dataflow Diagram), thông số tối ưu hiệu năng render canvas 30 FPS và nhật ký chuyển giao v1.1.0 được ghi nhận chi tiết tại: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+Chi tiết mô hình kiến trúc MVP, sơ đồ luồng dữ liệu Mermaid (Dataflow Diagram), thông số tối ưu hiệu năng render canvas 30 FPS và nhật ký chuyển giao v1.2.0 được ghi nhận chi tiết tại: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

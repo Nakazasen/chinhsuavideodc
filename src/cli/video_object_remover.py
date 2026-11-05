@@ -113,8 +113,59 @@ def run_cli(args=None):
         default=None,
         help='Thời gian kết thúc xử lý tính bằng giây (default: tới hết video)'
     )
+    parser.add_argument(
+        '--timeline',
+        action='store_true',
+        default=True,
+        help='Gắn thanh Timeline / Timecode OSD vào góc dưới bên phải video (default: True)'
+    )
+    parser.add_argument(
+        '--no-timeline',
+        dest='timeline',
+        action='store_false',
+        help='Không gắn thanh Timeline OSD'
+    )
+    parser.add_argument(
+        '--output',
+        type=str,
+        default=None,
+        help='Đường dẫn file video kết quả đầu ra'
+    )
+    parser.add_argument(
+        '--concat',
+        nargs='+',
+        metavar='VIDEO',
+        help='Ghép danh sách các file video thành 1 video duy nhất'
+    )
+    parser.add_argument(
+        '--timeline-mode',
+        default='realtime',
+        choices=['realtime', 'elapsed'],
+        help='Chế độ timeline: realtime (ngày giờ quay thực tế) hoặc elapsed (thời lượng)'
+    )
+    parser.add_argument(
+        '--start-datetime',
+        default=None,
+        help='Ngày giờ bắt đầu quay tùy chỉnh (YYYY-MM-DD HH:MM:SS)'
+    )
 
     parsed_args = parser.parse_args(args)
+
+    if parsed_args.concat:
+        print(f"\n[BẮT ĐẦU GHÉP {len(parsed_args.concat)} VIDEO]")
+        try:
+            out_f = VideoProcessor.concatenate_videos(
+                video_paths=parsed_args.concat,
+                output_path=parsed_args.output,
+                show_timeline=parsed_args.timeline,
+                timeline_mode=parsed_args.timeline_mode,
+                progress_callback=progress_reporter
+            )
+            print(f"\nTHÀNH CÔNG! File ghép đã lưu tại: {out_f}")
+            return
+        except Exception as err:
+            print(f"\nLỗi khi ghép video: {err}")
+            sys.exit(1)
 
     video_path = parsed_args.input
     if not video_path:
@@ -157,11 +208,15 @@ def run_cli(args=None):
     try:
         output_file = VideoProcessor.process_video(
             video_path=video_path,
+            output_path=parsed_args.output,
             mode=parsed_args.mode,
             roi=roi,
             padding=parsed_args.padding,
             start_time=parsed_args.start_time,
             end_time=parsed_args.end_time,
+            show_timeline=parsed_args.timeline,
+            timeline_mode=parsed_args.timeline_mode,
+            start_datetime=parsed_args.start_datetime,
             progress_callback=progress_reporter
         )
         print(f"\nTHÀNH CÔNG! File kết quả đã lưu tại: {output_file}")

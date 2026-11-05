@@ -32,9 +32,9 @@ class VideoObjectRemoverApp:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Công Cụ Xóa / Che Đối Tượng Video - AI Studio")
-        self.root.geometry("1240x840")
-        self.root.minsize(950, 600)
+        self.root.title("Chương Trình Xử Lý & Ghép Nối Video - AI Studio")
+        self.root.geometry("1240x860")
+        self.root.minsize(980, 660)
 
         # Trạng thái ứng dụng (State)
         self.video_path = None
@@ -61,6 +61,11 @@ class VideoObjectRemoverApp:
         self.stop_requested = False
         self.is_playing_preview = False
         self.preview_timer_id = None
+
+        # Trạng thái tab ghép video (Video Merger State)
+        self.merge_video_paths = []
+        self.merge_is_processing = False
+        self.merge_stop_requested = False
 
         self._setup_style()
         self._build_ui()
@@ -92,19 +97,37 @@ class VideoObjectRemoverApp:
         style.configure("Stop.TButton", background="#d9534f", foreground="white", font=("Segoe UI", 10, "bold"), padding=6)
         style.map("Stop.TButton", background=[("active", "#c9302c")])
 
+        # Style cho Tab Notebook và Treeview
+        style.configure("TNotebook", background=self.bg_dark, borderwidth=0)
+        style.configure("TNotebook.Tab", background=self.bg_card, foreground=self.text_color, font=("Segoe UI", 10, "bold"), padding=[16, 6])
+        style.map("TNotebook.Tab", background=[("selected", self.accent_color)], foreground=[("selected", "#ffffff")])
+        style.configure("Treeview", background=self.bg_card, foreground=self.text_color, fieldbackground=self.bg_card, font=("Segoe UI", 9), rowheight=26)
+        style.configure("Treeview.Heading", background="#36364a", foreground="#00d2ff", font=("Segoe UI", 9, "bold"))
+        style.map("Treeview", background=[("selected", self.accent_color)])
+
     def _build_ui(self):
         header_frame = ttk.Frame(self.root)
         header_frame.pack(fill="x", padx=15, pady=8)
 
         lbl_title = ttk.Label(
             header_frame,
-            text="CHƯƠNG TRÌNH XÓA & CHE ĐỐI TƯỢNG VIDEO (Standard Package Structure)",
+            text="CHƯƠNG TRÌNH XỬ LÝ & GHÉP NỐI VIDEO - AI STUDIO",
             style="Title.TLabel"
         )
         lbl_title.pack(side="left")
 
-        main_paned = ttk.Frame(self.root)
-        main_paned.pack(fill="both", expand=True, padx=15, pady=5)
+        # Khung Tabs chính (Notebook)
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.pack(fill="both", expand=True, padx=15, pady=5)
+
+        tab_single = ttk.Frame(self.notebook, style="TFrame")
+        tab_merge = ttk.Frame(self.notebook, style="TFrame")
+
+        self.notebook.add(tab_single, text="  🎯 1. Xử Lý Video Đơn & Tăng Sáng  ")
+        self.notebook.add(tab_merge, text="  🎞️ 2. Ghép Nối Nhiều Video (Merger)  ")
+
+        main_paned = ttk.Frame(tab_single)
+        main_paned.pack(fill="both", expand=True, padx=0, pady=5)
 
         # Thêm cuộn Scrollbar cho cột bảng điều khiển bên trái
         left_container = ttk.Frame(main_paned, style="Card.TFrame", width=380)
@@ -191,12 +214,22 @@ class VideoObjectRemoverApp:
 
         r2 = ttk.Radiobutton(
             self.enhance_frame,
-            text="🌐 Làm sáng TOÀN BỘ (Loại trừ Camera phụ)",
+            text="🌐 Làm sáng TOÀN BỘ (Toàn khung hình)",
             value="all",
             variable=self.var_enhance_scope,
             command=self._redraw_canvas
         )
         r2.pack(anchor="w", pady=1)
+
+        # Checkbox Khóa sáng Camera phụ (Đưa lên trên đầu để dễ bật/tắt)
+        self.var_auto_protect_pip = tk.BooleanVar(value=False)
+        self.chk_auto_pip = ttk.Checkbutton(
+            self.enhance_frame,
+            text="🔒 Khóa sáng Camera phụ (Góc trên bên phải)",
+            variable=self.var_auto_protect_pip,
+            command=self._redraw_canvas
+        )
+        self.chk_auto_pip.pack(anchor="w", pady=(3, 4))
 
         # 1. Shadow Lift
         f_lift = ttk.Frame(self.enhance_frame, style="Card.TFrame")
@@ -242,14 +275,46 @@ class VideoObjectRemoverApp:
         self.scale_sharpen.set(20)
         self.scale_sharpen.pack(fill="x", pady=1)
 
-        self.var_auto_protect_pip = tk.BooleanVar(value=True)
-        self.chk_auto_pip = ttk.Checkbutton(
-            self.enhance_frame,
-            text="🔒 Mặc định khóa góc phải (Camera phụ 2)",
-            variable=self.var_auto_protect_pip,
+        # Tùy chọn gắn Timeline OSD
+        self.var_show_timeline = tk.BooleanVar(value=True)
+        self.chk_timeline = ttk.Checkbutton(
+            sec2,
+            text="⏱️ Gắn Timeline / Timecode vào góc video",
+            variable=self.var_show_timeline,
+            command=self._on_timeline_toggle
+        )
+        self.chk_timeline.pack(anchor="w", pady=(4, 2))
+
+        # Bảng tùy chọn 2 kiểu Timeline
+        self.timeline_panel = ttk.Frame(sec2, style="Card.TFrame")
+        self.timeline_panel.pack(fill="x", padx=10, pady=(0, 4))
+
+        self.var_timeline_mode = tk.StringVar(value="realtime")
+        r_tl1 = ttk.Radiobutton(
+            self.timeline_panel,
+            text="1️⃣ Thời lượng video (00:00:00.00 / 00:25:31)",
+            value="elapsed",
+            variable=self.var_timeline_mode,
             command=self._redraw_canvas
         )
-        self.chk_auto_pip.pack(anchor="w", pady=4)
+        r_tl1.pack(anchor="w", pady=1)
+
+        r_tl2 = ttk.Radiobutton(
+            self.timeline_panel,
+            text="2️⃣ Thời gian thực tế quay (YYYY-MM-DD HH:MM:SS)",
+            value="realtime",
+            variable=self.var_timeline_mode,
+            command=self._redraw_canvas
+        )
+        r_tl2.pack(anchor="w", pady=1)
+
+        f_start_dt = ttk.Frame(self.timeline_panel, style="Card.TFrame")
+        f_start_dt.pack(fill="x", pady=2)
+        ttk.Label(f_start_dt, text="Mốc giờ quay gốc:", style="Card.TLabel").pack(side="left")
+        self.entry_start_dt = ttk.Entry(f_start_dt, width=19)
+        self.entry_start_dt.insert(0, "2026-07-22 10:54:28")
+        self.entry_start_dt.pack(side="left", padx=4)
+        self.entry_start_dt.bind("<KeyRelease>", lambda e: self._redraw_canvas())
 
         ttk.Label(sec2, text="Padding mở rộng ROI (pixel):", style="Card.TLabel").pack(anchor="w", pady=(5, 1))
         self.spin_padding = ttk.Spinbox(sec2, from_=0, to=50, increment=2)
@@ -341,6 +406,9 @@ class VideoObjectRemoverApp:
         # Kích hoạt hiển thị chế độ mặc định sau khi toàn bộ widget đã tạo xong
         self._on_mode_change()
 
+        # Xây dựng giao diện Tab 2 (Ghép Nối Nhiều Video)
+        self._build_merge_tab_ui(tab_merge)
+
     def _browse_video(self):
         initial_dir = os.path.join(ROOT_DIR, "samples") if os.path.exists(os.path.join(ROOT_DIR, "samples")) else None
         file_path = filedialog.askopenfilename(
@@ -383,7 +451,24 @@ class VideoObjectRemoverApp:
             text="Hay dung chuot keo khoanh vung doi tuong tren hinh ben phai", foreground="#ffcc00"
         )
 
+        try:
+            start_dt = VideoProcessor.get_video_start_datetime(file_path, info["duration_sec"])
+            if hasattr(self, 'entry_start_dt'):
+                self.entry_start_dt.delete(0, tk.END)
+                self.entry_start_dt.insert(0, start_dt.strftime("%Y-%m-%d %H:%M:%S"))
+        except Exception:
+            pass
+
         self._load_frame(0)
+
+    def _on_timeline_toggle(self):
+        if not hasattr(self, 'timeline_panel'):
+            return
+        if self.var_show_timeline.get():
+            self.timeline_panel.pack(fill="x", padx=10, pady=(0, 4), after=self.chk_timeline)
+        else:
+            self.timeline_panel.pack_forget()
+        self._redraw_canvas()
 
     def _load_frame(self, frame_idx: int):
         if not self.cap or not self.cap.isOpened():
@@ -464,7 +549,7 @@ class VideoObjectRemoverApp:
         selected_mode = ProcessingMode.ALL_MODES[mode_idx] if mode_idx < len(ProcessingMode.ALL_MODES) else ProcessingMode.INPAINT
 
         if selected_mode == ProcessingMode.ENHANCE_LIGHT:
-            self.enhance_frame.pack(fill="x", pady=5)
+            self.enhance_frame.pack(after=self.combo_mode, fill="x", pady=5)
             if hasattr(self, 'lbl_roi'):
                 self.lbl_roi.config(
                     text="Chế độ Tăng Sáng: Kéo chuột khoanh ô để chọn VÙNG CHỈ ĐỊNH cần tăng sáng.",
@@ -573,6 +658,20 @@ class VideoObjectRemoverApp:
                 shadow_lift=shadow_l,
                 target_roi=target_r,
                 exclude_roi=exclude
+            )
+
+        if hasattr(self, 'var_show_timeline') and self.var_show_timeline.get():
+            current_sec = self.current_frame_idx / self.fps if self.fps > 0 else 0.0
+            total_sec = self.total_frames / self.fps if self.fps > 0 else 0.0
+            tl_mode = self.var_timeline_mode.get() if hasattr(self, 'var_timeline_mode') else "realtime"
+            start_dt_val = self.entry_start_dt.get().strip() if hasattr(self, 'entry_start_dt') else None
+            frame_to_disp = VideoProcessor.draw_timeline_overlay(
+                frame=frame_to_disp.copy(),
+                current_time_sec=current_sec,
+                total_duration_sec=total_sec,
+                timeline_mode=tl_mode,
+                start_datetime=start_dt_val,
+                position="bottom_right"
             )
 
         resized_bgr = cv2.resize(frame_to_disp, (disp_w, disp_h), interpolation=cv2.INTER_LINEAR)
@@ -724,6 +823,10 @@ class VideoObjectRemoverApp:
             def check_cancelled() -> bool:
                 return self.stop_requested
 
+            show_tl = self.var_show_timeline.get() if hasattr(self, 'var_show_timeline') else True
+            tl_mode = self.var_timeline_mode.get() if hasattr(self, 'var_timeline_mode') else "realtime"
+            start_dt_val = self.entry_start_dt.get().strip() if hasattr(self, 'entry_start_dt') else None
+
             output_path = VideoProcessor.process_video(
                 video_path=self.video_path,
                 mode=mode,
@@ -737,6 +840,9 @@ class VideoObjectRemoverApp:
                 shadow_lift=shadow_lift,
                 target_roi=target_r,
                 exclude_roi=exclude_r,
+                show_timeline=show_tl,
+                timeline_mode=tl_mode,
+                start_datetime=start_dt_val,
                 progress_callback=gui_progress,
                 stop_checker=check_cancelled
             )
@@ -766,6 +872,388 @@ class VideoObjectRemoverApp:
             messagebox.showinfo("Thành Công", f"Đã xuất video thành công tại:\n{result_msg}")
         else:
             self.lbl_status.config(text=f"Đã dừng / Lỗi: {result_msg}", foreground="#ff5555")
+
+    # =========================================================================
+    # --- LOGIC & GIAO DIỆN TAB 2: GHÉP NỐI NHIỀU VIDEO (VIDEO MERGER) ---
+    # =========================================================================
+
+    def _build_merge_tab_ui(self, parent_frame: ttk.Frame):
+        """Xây dựng giao diện Tab 2: Ghép Nối Nhiều Video."""
+        merge_main = ttk.Frame(parent_frame, style="TFrame")
+        merge_main.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # 1. Khung dưới: Cấu hình đầu ra & Nút thực thi (Pack trước với side='bottom' để luôn hiển thị đầy đủ, không bao giờ bị che chân)
+        bottom_frame = ttk.Frame(merge_main, style="Card.TFrame")
+        bottom_frame.pack(side="bottom", fill="x", padx=5, pady=(0, 5))
+
+        # Cấu hình thông số ghép
+        cfg_frame = ttk.Frame(bottom_frame, style="Card.TFrame")
+        cfg_frame.pack(fill="x", padx=12, pady=(6, 4))
+
+        ttk.Label(cfg_frame, text="⚙️ Cấu Hình Video Đầu Ra", style="Header.TLabel").pack(anchor="w", pady=(0, 3))
+
+        row1 = ttk.Frame(cfg_frame, style="Card.TFrame")
+        row1.pack(fill="x", pady=2)
+
+        ttk.Label(row1, text="Độ phân giải đầu ra:", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        self.combo_merge_res = ttk.Combobox(row1, state="readonly", values=[
+            "Tự động (Theo video đầu tiên)",
+            "1920x1080 (Full HD 1080p)",
+            "1280x720 (HD 720p)",
+            "3840x2160 (4K UHD)",
+            "1080x1920 (Dọc TikTok / Reels 9:16)"
+        ], width=32)
+        self.combo_merge_res.current(0)
+        self.combo_merge_res.pack(side="left", padx=5)
+
+        self.var_merge_letterbox = tk.BooleanVar(value=True)
+        chk_letterbox = ttk.Checkbutton(
+            row1,
+            text="🔲 Giữ tỷ lệ khung hình (Thêm viền đen Letterbox chống méo hình)",
+            variable=self.var_merge_letterbox
+        )
+        chk_letterbox.pack(side="left", padx=(20, 0))
+
+        row2 = ttk.Frame(cfg_frame, style="Card.TFrame")
+        row2.pack(fill="x", pady=2)
+
+        self.var_merge_timeline = tk.BooleanVar(value=False)
+        chk_merge_tl = ttk.Checkbutton(
+            row2,
+            text="⏱️ Gắn Timeline / Timecode OSD vào góc video",
+            variable=self.var_merge_timeline
+        )
+        chk_merge_tl.pack(side="left")
+
+        self.var_merge_tl_mode = tk.StringVar(value="elapsed")
+        r_tl_el = ttk.Radiobutton(
+            row2,
+            text="Thời lượng tổng liên tục (Elapsed)",
+            value="elapsed",
+            variable=self.var_merge_tl_mode
+        )
+        r_tl_el.pack(side="left", padx=(15, 5))
+
+        r_tl_rt = ttk.Radiobutton(
+            row2,
+            text="Giờ quay thực tế từng clip (Realtime)",
+            value="realtime",
+            variable=self.var_merge_tl_mode
+        )
+        r_tl_rt.pack(side="left", padx=5)
+
+        row3 = ttk.Frame(cfg_frame, style="Card.TFrame")
+        row3.pack(fill="x", pady=2)
+
+        ttk.Label(row3, text="Nơi lưu file video kết quả:", style="Card.TLabel").pack(side="left", padx=(0, 5))
+        self.entry_merge_output = ttk.Entry(row3)
+        self.entry_merge_output.pack(side="left", fill="x", expand=True, padx=5)
+        btn_browse_out = ttk.Button(row3, text="Chọn Nơi Lưu...", command=self._browse_merge_output_path)
+        btn_browse_out.pack(side="left", padx=2)
+
+        ttk.Separator(bottom_frame, orient="horizontal").pack(fill="x", padx=12, pady=4)
+
+        # Tiến độ & Nút thực thi
+        exec_frame = ttk.Frame(bottom_frame, style="Card.TFrame")
+        exec_frame.pack(fill="x", padx=12, pady=(2, 8))
+
+        self.lbl_merge_status = ttk.Label(
+            exec_frame,
+            text="Trạng thái: Sẵn sàng (Hãy thêm ít nhất 2 video để ghép)",
+            style="Status.TLabel"
+        )
+        self.lbl_merge_status.pack(anchor="w", pady=(1, 3))
+
+        self.merge_progress_bar = ttk.Progressbar(exec_frame, orient="horizontal", mode="determinate")
+        self.merge_progress_bar.pack(fill="x", pady=(0, 6))
+
+        btn_row = ttk.Frame(exec_frame, style="Card.TFrame")
+        btn_row.pack(fill="x", pady=(2, 2))
+
+        self.btn_merge_start = ttk.Button(
+            btn_row,
+            text="🚀 BẮT ĐẦU GHÉP VIDEO",
+            style="Accent.TButton",
+            command=self._start_merge_thread
+        )
+        self.btn_merge_start.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btn_merge_stop = ttk.Button(
+            btn_row,
+            text="⏹️ DỪNG LẠI KHẨN CẤP",
+            style="Stop.TButton",
+            command=self._stop_merge_process,
+            state="disabled"
+        )
+        self.btn_merge_stop.pack(side="right", fill="x", expand=True, padx=(5, 0))
+
+        # 2. Khung trên: Danh sách video & Nút thao tác (Tự động chiếm toàn bộ khoảng trống còn lại)
+        top_frame = ttk.Frame(merge_main, style="Card.TFrame")
+        top_frame.pack(side="top", fill="both", expand=True, padx=5, pady=(0, 5))
+
+        header_list = ttk.Frame(top_frame, style="Card.TFrame")
+        header_list.pack(fill="x", padx=10, pady=(6, 3))
+        ttk.Label(header_list, text="📋 Danh Sách Video Cần Ghép (Theo Thứ Tự Từ Trên Xuống Dưới)", style="Header.TLabel").pack(side="left")
+
+        # Container chứa bảng Treeview và thanh cuộn
+        tree_container = ttk.Frame(top_frame, style="Card.TFrame")
+        tree_container.pack(fill="both", expand=True, padx=10, pady=3)
+
+        cols = ("idx", "name", "duration", "resolution", "fps", "path")
+        self.tree_merge = ttk.Treeview(tree_container, columns=cols, show="headings", selectmode="browse", height=5)
+        self.tree_merge.heading("idx", text="#")
+        self.tree_merge.heading("name", text="Tên File Video")
+        self.tree_merge.heading("duration", text="Thời Lượng")
+        self.tree_merge.heading("resolution", text="Độ Phân Giải")
+        self.tree_merge.heading("fps", text="FPS")
+        self.tree_merge.heading("path", text="Đường Dẫn Chi Tiết")
+
+        self.tree_merge.column("idx", width=40, anchor="center")
+        self.tree_merge.column("name", width=220, anchor="w")
+        self.tree_merge.column("duration", width=110, anchor="center")
+        self.tree_merge.column("resolution", width=110, anchor="center")
+        self.tree_merge.column("fps", width=70, anchor="center")
+        self.tree_merge.column("path", width=380, anchor="w")
+
+        scroll_tree_y = ttk.Scrollbar(tree_container, orient="vertical", command=self.tree_merge.yview)
+        self.tree_merge.configure(yscrollcommand=scroll_tree_y.set)
+        scroll_tree_y.pack(side="right", fill="y")
+        self.tree_merge.pack(side="left", fill="both", expand=True)
+
+        # Cụm nút quản lý danh sách
+        btn_toolbar = ttk.Frame(top_frame, style="Card.TFrame")
+        btn_toolbar.pack(fill="x", padx=10, pady=(3, 6))
+
+        btn_add = ttk.Button(btn_toolbar, text="➕ Thêm Video...", style="Accent.TButton", command=self._browse_merge_videos)
+        btn_add.pack(side="left", padx=3)
+
+        btn_rem = ttk.Button(btn_toolbar, text="❌ Xóa Đã Chọn", command=self._remove_selected_merge_video)
+        btn_rem.pack(side="left", padx=3)
+
+        btn_clr = ttk.Button(btn_toolbar, text="🗑️ Xóa Tất Cả", command=self._clear_all_merge_videos)
+        btn_clr.pack(side="left", padx=3)
+
+        btn_up = ttk.Button(btn_toolbar, text="⬆️ Di Chuyển Lên", command=self._move_up_merge_video)
+        btn_up.pack(side="left", padx=3)
+
+        btn_down = ttk.Button(btn_toolbar, text="⬇️ Di Chuyển Xuống", command=self._move_down_merge_video)
+        btn_down.pack(side="left", padx=3)
+
+        self.lbl_merge_summary = ttk.Label(
+            btn_toolbar,
+            text="Tổng cộng: 0 video | Tổng thời lượng: 00:00:00 (0 frames)",
+            style="Status.TLabel"
+        )
+        self.lbl_merge_summary.pack(side="right", padx=5)
+
+    def _browse_merge_videos(self):
+        """Mở hộp thoại chọn nhiều file video để thêm vào danh sách ghép."""
+        initial_dir = os.path.join(ROOT_DIR, "samples") if os.path.exists(os.path.join(ROOT_DIR, "samples")) else None
+        files = filedialog.askopenfilenames(
+            title="Chọn Các Video Cần Ghép (Giữ Ctrl/Shift để chọn nhiều file)",
+            initialdir=initial_dir,
+            filetypes=[("Video Files", "*.mp4 *.avi *.mkv *.mov"), ("All Files", "*.*")]
+        )
+        if not files:
+            return
+
+        for f in files:
+            abs_p = os.path.abspath(f)
+            if abs_p not in self.merge_video_paths:
+                self.merge_video_paths.append(abs_p)
+
+        self._refresh_merge_treeview()
+
+    def _refresh_merge_treeview(self):
+        """Cập nhật lại bảng danh sách Treeview và dòng tổng kết."""
+        for item in self.tree_merge.get_children():
+            self.tree_merge.delete(item)
+
+        total_frames = 0
+        total_duration = 0.0
+
+        for idx, path in enumerate(self.merge_video_paths, 1):
+            fname = os.path.basename(path)
+            try:
+                info = VideoProcessor.get_video_info(path)
+                dur_str = VideoProcessor.format_timecode(info["duration_sec"], show_millis=False)
+                res_str = f"{info['width']}x{info['height']}"
+                fps_str = f"{info['fps']:.1f}"
+                total_frames += info["total_frames"]
+                total_duration += info["duration_sec"]
+            except Exception:
+                dur_str = "Lỗi đọc"
+                res_str = "N/A"
+                fps_str = "N/A"
+
+            self.tree_merge.insert(
+                "", "end", iid=str(idx - 1),
+                values=(idx, fname, dur_str, res_str, fps_str, path)
+            )
+
+        dur_all_str = VideoProcessor.format_timecode(total_duration, show_millis=False)
+        self.lbl_merge_summary.config(
+            text=f"Tổng cộng: {len(self.merge_video_paths)} video | Tổng thời lượng: {dur_all_str} ({total_frames} frames)"
+        )
+
+        if not self.entry_merge_output.get().strip() and self.merge_video_paths:
+            out_dir = os.path.join(ROOT_DIR, "outputs")
+            os.makedirs(out_dir, exist_ok=True)
+            t_str = time.strftime("%Y%m%d_%H%M%S")
+            self.entry_merge_output.delete(0, tk.END)
+            self.entry_merge_output.insert(0, os.path.join(out_dir, f"merged_video_{t_str}.mp4"))
+
+        if len(self.merge_video_paths) >= 2:
+            self.lbl_merge_status.config(
+                text=f"Trạng thái: Đã sẵn sàng ghép {len(self.merge_video_paths)} video!",
+                foreground="#00ffaa"
+            )
+        elif len(self.merge_video_paths) == 1:
+            self.lbl_merge_status.config(
+                text="Trạng thái: Hãy thêm ít nhất 1 video nữa để tiến hành ghép",
+                foreground="#ffcc00"
+            )
+        else:
+            self.lbl_merge_status.config(
+                text="Trạng thái: Sẵn sàng (Hãy thêm ít nhất 2 video để ghép)",
+                foreground="#00ffaa"
+            )
+
+    def _remove_selected_merge_video(self):
+        selected = self.tree_merge.selection()
+        if not selected:
+            return
+        idx = int(selected[0])
+        if 0 <= idx < len(self.merge_video_paths):
+            del self.merge_video_paths[idx]
+            self._refresh_merge_treeview()
+
+    def _clear_all_merge_videos(self):
+        self.merge_video_paths.clear()
+        self._refresh_merge_treeview()
+
+    def _move_up_merge_video(self):
+        selected = self.tree_merge.selection()
+        if not selected:
+            return
+        idx = int(selected[0])
+        if idx > 0:
+            self.merge_video_paths[idx - 1], self.merge_video_paths[idx] = (
+                self.merge_video_paths[idx], self.merge_video_paths[idx - 1]
+            )
+            self._refresh_merge_treeview()
+            self.tree_merge.selection_set(str(idx - 1))
+
+    def _move_down_merge_video(self):
+        selected = self.tree_merge.selection()
+        if not selected:
+            return
+        idx = int(selected[0])
+        if idx < len(self.merge_video_paths) - 1:
+            self.merge_video_paths[idx + 1], self.merge_video_paths[idx] = (
+                self.merge_video_paths[idx], self.merge_video_paths[idx + 1]
+            )
+            self._refresh_merge_treeview()
+            self.tree_merge.selection_set(str(idx + 1))
+
+    def _browse_merge_output_path(self):
+        f = filedialog.asksaveasfilename(
+            title="Chọn Nơi Lưu File Video Ghép",
+            initialdir=os.path.join(ROOT_DIR, "outputs"),
+            initialfile=f"merged_video_{time.strftime('%Y%m%d_%H%M%S')}.mp4",
+            defaultextension=".mp4",
+            filetypes=[("MP4 Video", "*.mp4"), ("All Files", "*.*")]
+        )
+        if f:
+            self.entry_merge_output.delete(0, tk.END)
+            self.entry_merge_output.insert(0, os.path.abspath(f))
+
+    def _start_merge_thread(self):
+        if len(self.merge_video_paths) < 2:
+            messagebox.showwarning("Cảnh báo", "Vui lòng thêm ít nhất 2 video vào danh sách để ghép!")
+            return
+
+        out_path = self.entry_merge_output.get().strip()
+        if not out_path:
+            out_dir = os.path.join(ROOT_DIR, "outputs")
+            os.makedirs(out_dir, exist_ok=True)
+            out_path = os.path.join(out_dir, f"merged_video_{time.strftime('%Y%m%d_%H%M%S')}.mp4")
+            self.entry_merge_output.insert(0, out_path)
+
+        self.merge_is_processing = True
+        self.merge_stop_requested = False
+
+        self.btn_merge_start.config(state="disabled")
+        self.btn_merge_stop.config(state="normal")
+        self.lbl_merge_status.config(text="Trạng thái: Đang tiến hành ghép video...", foreground="#00d2ff")
+
+        thread = threading.Thread(target=self._run_video_merge, daemon=True)
+        thread.start()
+
+    def _stop_merge_process(self):
+        if self.merge_is_processing:
+            self.merge_stop_requested = True
+            self.lbl_merge_status.config(text="Trạng thái: Đang dừng ghép khẩn cấp...", foreground="#ff5555")
+
+    def _run_video_merge(self):
+        try:
+            res_idx = self.combo_merge_res.current()
+            target_res = None
+            if res_idx == 1:
+                target_res = (1920, 1080)
+            elif res_idx == 2:
+                target_res = (1280, 720)
+            elif res_idx == 3:
+                target_res = (3840, 2160)
+            elif res_idx == 4:
+                target_res = (1080, 1920)
+
+            maintain_ar = self.var_merge_letterbox.get()
+            show_tl = self.var_merge_timeline.get()
+            tl_m = self.var_merge_tl_mode.get()
+            out_path = self.entry_merge_output.get().strip()
+
+            def merge_progress(pct: float, current: int, total: int):
+                self.root.after(0, self._update_merge_progress, pct, current, total)
+
+            def check_cancelled() -> bool:
+                return self.merge_stop_requested
+
+            result_file = VideoProcessor.concatenate_videos(
+                video_paths=self.merge_video_paths,
+                output_path=out_path,
+                target_resolution=target_res,
+                maintain_aspect_ratio=maintain_ar,
+                show_timeline=show_tl,
+                timeline_mode=tl_m,
+                progress_callback=merge_progress,
+                stop_checker=check_cancelled
+            )
+
+            if self.merge_stop_requested:
+                self.root.after(0, self._finish_merge_processing, False, "Đã hủy theo yêu cầu của người dùng!")
+            else:
+                self.root.after(0, self._finish_merge_processing, True, result_file)
+
+        except Exception as err:
+            self.root.after(0, self._finish_merge_processing, False, str(err))
+
+    def _update_merge_progress(self, pct: float, frame_count: int, total: int):
+        self.merge_progress_bar['value'] = pct
+        self.lbl_merge_status.config(text=f"Tiến độ ghép: {pct:.1f}% ({frame_count}/{total} frames)")
+
+    def _finish_merge_processing(self, success: bool, result_msg: str):
+        self.merge_is_processing = False
+        self.merge_stop_requested = False
+
+        self.btn_merge_start.config(state="normal")
+        self.btn_merge_stop.config(state="disabled")
+
+        if success:
+            self.lbl_merge_status.config(text="ĐÃ GHÉP VIDEO THÀNH CÔNG!", foreground="#00ffaa")
+            messagebox.showinfo("Thành Công", f"Đã ghép video thành công tại:\n{result_msg}")
+        else:
+            self.lbl_merge_status.config(text=f"Đã dừng / Lỗi: {result_msg}", foreground="#ff5555")
 
 
 def main():

@@ -124,6 +124,7 @@ flowchart TD
 | **`crop`** | Cắt viền lề video | Frame Slicing | Cắt bỏ phần lề video từ viền trái ROI trở sang phải `frame[0:height, 0:roi_x]`. Tự động giảm độ rộng file đầu ra. |
 
 ### 4.2. Tính năng & Tối ưu hiệu năng mới
+- **Ghép nhiều video thành 1 video duy nhất (Video Concatenator / Merger):** Hỗ trợ ghép danh sách nhiều video, tự động chuẩn hóa kích thước (Letterboxing viền đen chống méo), đồng bộ FPS và hỗ trợ OSD Timeline liên tục (Elapsed / Realtime).
 - **Cắt / Xử lý theo khoảng thời gian (Time-range Trimming):** Cho phép đặt `start_time` và `end_time` (tính bằng giây). Nhảy frame trực tiếp bằng OpenCV Seek trong 0ms.
 - **Trình phát xem trước mượt mà (Preview Player 30 FPS):** Hỗ trợ `▶ Play` / `⏸ Pause`, `⏪ -5s`, `⏩ +5s`. Tối ưu tốc độ vẽ bằng OpenCV C++ Bilinear Resize (`cv2.resize`) nhanh gấp 50 lần so với PIL.
 - **Hiển thị tiến độ Realtime nổi bật:** Thanh progress bar và % tiến độ được đưa lên trên các nút bấm chính ở Mục 4, tự động nhảy số theo từng frame giúp quan sát rõ ràng.
@@ -135,6 +136,7 @@ flowchart TD
 
 | Phiên bản / Ngày | Thành phần nâng cấp | Mô tả chi tiết |
 | :--- | :--- | :--- |
+| **v1.2.0** *(20/08/2026)* | **Video Concatenation (Ghép Video)** | Thêm phương thức `VideoProcessor.concatenate_videos` + `resize_with_letterbox`, Tab 2 trên GUI `ttk.Notebook`, CLI cờ `--concat` và script `merge_videos.py`. Test suite đạt 100% pass. |
 | **v1.1.0** *(22/07/2026)* | **Time-Range Trimming** | Thêm tham số `start_time` & `end_time` cho Core, GUI và CLI giúp test nhanh video nặng trên các đoạn ngắn 3-10 giây. |
 | **v1.1.0** *(22/07/2026)* | **Preview Video Player** | Thêm bộ điều khiển xem trước video (`Play/Pause`, `-5s`, `+5s`) trên Canvas GUI. |
 | **v1.1.0** *(22/07/2026)* | **Canvas Speedup** | Tối ưu render canvas bằng OpenCV C++ Bilinear Resize + bù trễ tự động, đưa tốc độ phát xem trước lên 30 FPS realtime mượt mà. |
@@ -149,3 +151,5 @@ flowchart TD
    - Trong hàm `VideoProcessor.process_single_frame()`, thêm khối nhánh `elif mode == ProcessingMode.YOUR_MODE:` để thực thi thuật toán OpenCV mong muốn.
 2. **Thay thế thuật toán Object Tracking:**
    - Mở `src/core/video_processor.py` -> `VideoProcessor.create_tracker()`, thay thế `cv2.TrackerMIL_create()` bằng thuật toán mong muốn (như CSRT, KCF hoặc mô hình AI YOLO/SAM 2).
+3. **Mở rộng tính năng ghép video:**
+   - Gọi trực tiếp `VideoProcessor.concatenate_videos()` hoặc sử dụng script `merge_videos.py` với các tham số tùy biến độ phân giải, FPS và Letterbox.

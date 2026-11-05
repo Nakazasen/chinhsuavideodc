@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Architecture & Code Visualizer (Excalidraw Style)</title>
+  
+  <!-- Google Fonts: Hand-drawn & Clean UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Inter:wght@400;500;600;700&family=Shantell+Sans:ital,wght@0,400..700;1,400..700&family=Virgil&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Mermaid.js v11 with Rough.js Hand-drawn Engine -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <!-- Panzoom for smooth canvas zooming and panning -->
+  <script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.5.1/dist/panzoom.min.js"></script>
+
+  <style>
+    :root {
+      --bg-canvas: #f8f9fa;
+      --bg-panel: #ffffff;
+      --border-color: #e2e8f0;
+      --text-main: #1e293b;
+      --text-muted: #64748b;
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --accent: #f59e0b;
+      --font-hand: 'Shantell Sans', 'Caveat', 'Virgil', cursive, sans-serif;
+      --font-ui: 'Inter', system-ui, -apple-system, sans-serif;
+      --font-code: 'Fira Code', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-ui);
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar / Editor */
+    #sidebar {
+      width: 440px;
+      min-width: 380px;
+      background: var(--bg-panel);
+      border-right: 2px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      box-shadow: 4px 0 15px rgba(0,0,0,0.03);
+      z-index: 10;
+      transition: transform 0.3s ease;
+    }
+
+    #sidebar.collapsed {
+      transform: translateX(-100%);
+      position: absolute;
+    }
+
+    .header-bar {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #fafafa;
+    }
+
+    .header-title {
+      font-family: var(--font-hand);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-family: var(--font-ui);
+      font-size: 0.7rem;
+      font-weight: 600;
+      background: #e0e7ff;
+      color: #3730a3;
+      padding: 2px 8px;
+      border-radius: 12px;
+      text-transform: uppercase;
+    }
+
+    /* Tabs */
+    .tabs-nav {
+      display: flex;
+      padding: 8px 12px 0 12px;
+      gap: 6px;
+      border-bottom: 1px solid var(--border-color);
+      background: #f8fafc;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      padding: 8px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      background: transparent;
+      border: 1px solid transparent;
+      border-bottom: none;
+      border-radius: 8px 8px 0 0;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+      background: #e2e8f0;
+    }
+
+    .tab-btn.active {
+      background: var(--bg-panel);
+      color: var(--primary);
+      border-color: var(--border-color);
+      border-bottom: 1px solid var(--bg-panel);
+      margin-bottom: -1px;
+    }
+
+    /* Editor Container */
+    .editor-section {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      gap: 10px;
+    }
+
+    .editor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .editor-desc {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    #mermaid-code {
+      flex: 1;
+      width: 100%;
+      font-family: var(--font-code);
+      font-size: 0.82rem;
+      line-height: 1.45;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      background: #0f172a;
+      color: #f8fafc;
+      resize: none;
+      outline: none;
+    }
+
+    #mermaid-code:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 9px 14px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid var(--border-color);
+      background: #ffffff;
+      color: var(--text-main);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #f1f5f9;
+      border-color: #cbd5e1;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #ffffff;
+      border-color: var(--primary);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    /* Main Viewport / Canvas */
+    #viewport {
+      flex: 1;
+      position: relative;
+      background: 
+        radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+      background-size: 24px 24px;
+      background-color: #fdfbf7; /* Classic warm Excalidraw paper background */
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #panzoom-container {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+    }
+
+    #panzoom-container:active {
+      cursor: grabbing;
+    }
+
+    #diagram-output {
+      padding: 40px;
+      display: inline-block;
+      user-select: none;
+    }
+
+    /* Floating Toolbar */
+    .floating-toolbar {
+      position: absolute;
+      bottom: 24px;
+      right: 24px;
+      display: flex;
+      gap: 8px;
+      background: #ffffff;
+      padding: 6px 10px;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border-color);
+      z-index: 20;
+    }
+
+    .tool-btn {
+      width: 38px;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: transparent;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1.1rem;
+      color: var(--text-main);
+      transition: background 0.15s;
+    }
+
+    .tool-btn:hover {
+      background: #f1f5f9;
+    }
+
+    .toggle-sidebar-btn {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      z-index: 30;
+      background: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Hand-drawn Styling for Mermaid Elements */
+    .mermaid text {
+      font-family: var(--font-hand) !important;
+      font-size: 15px !important;
+      letter-spacing: 0.2px;
+    }
+
+    .error-box {
+      background: #fee2e2;
+      border: 1px solid #ef4444;
+      color: #991b1b;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Toggle Sidebar Button -->
+  <button id="toggle-sidebar" class="toggle-sidebar-btn" title="Ẩn/Hiện bảng điều khiển">
+    <span>✏️</span> <span>Mã Sơ Đồ</span>
+  </button>
+
+  <!-- Sidebar -->
+  <aside id="sidebar">
+    <div class="header-bar">
+      <div class="header-title">
+        <span>🎨 Excali-Flow</span>
+        <span class="badge">Hand-Drawn</span>
+      </div>
+    </div>
+
+    <!-- Tabs Navigation -->
+    <nav class="tabs-nav" id="tabs-container">
+      <!-- Generated by JS -->
+    </nav>
+
+    <!-- Editor Section -->
+    <div class="editor-section">
+      <div class="editor-header">
+        <div class="editor-desc" id="tab-desc">Mô tả sơ đồ</div>
+      </div>
+
+      <textarea id="mermaid-code" spellcheck="false" placeholder="Nhập mã Mermaid tại đây..."></textarea>
+      
+      <div id="error-msg" class="error-box"></div>
+
+      <div class="btn-row">
+        <button id="btn-render" class="btn btn-primary" style="flex: 2;">
+          <span>⚡ Cập Nhật Sơ Đồ</span>
+        </button>
+        <button id="btn-copy" class="btn" style="flex: 1;">
+          <span>📋 Sao Chép</span>
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Viewport -->
+  <main id="viewport">
+    <div id="panzoom-container">
+      <div id="diagram-output" class="mermaid">
+        <!-- Rendered Mermaid SVG goes here -->
+      </div>
+    </div>
+
+    <!-- Floating Zoom/Export Toolbar -->
+    <div class="floating-toolbar">
+      <button id="zoom-in" class="tool-btn" title="Phóng to (Zoom In)">➕</button>
+      <button id="zoom-out" class="tool-btn" title="Thu nhỏ (Zoom Out)">➖</button>
+      <button id="zoom-reset" class="tool-btn" title="Về mặc định (Reset)">🎯</button>
+      <div style="width: 1px; background: var(--border-color); margin: 4px 2px;"></div>
+      <button id="export-svg" class="tool-btn" title="Tải file Vector SVG">🖼️ SVG</button>
+      <button id="export-png" class="tool-btn" title="Tải ảnh PNG độ nét cao">📷 PNG</button>
+    </div>
+  </main>
+
+  <script>
+    const diagrams = {
+  "overview": {
+    "title": "Kiến Trúc Tổng Thể (System Architecture)",
+    "desc": "Luồng kết nối giữa Entrypoint, Giao diện Tkinter, CLI và Core Video Engine",
+    "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#e0f2fe', 'primaryBorderColor': '#0284c7', 'primaryTextColor': '#0f172a', 'secondaryColor': '#fef3c7', 'secondaryBorderColor': '#d97706', 'secondaryTextColor': '#0f172a', 'tertiaryColor': '#f3e8ff', 'tertiaryBorderColor': '#9333ea', 'tertiaryTextColor': '#0f172a', 'lineColor': '#334155', 'fontSize': '15px' }, 'look': 'handDrawn'}}%%\nflowchart TD\n    subgraph S_ENTRY[\"Entrypoint Layer\"]\n        MAIN[\"main.py: main()\"]\n    end\n\n    subgraph S_GUI[\"GUI Layer (Tkinter / Presenter)\"]\n        APP[\"VideoObjectRemoverApp<br/>(src/gui/app_gui.py)\"]\n        REDRAW[\"_redraw_canvas()\"]\n        PARAM[\"_on_enhance_param_change()\"]\n        ROI_SEL[\"_on_canvas_click / drag\"]\n    end\n\n    subgraph S_CLI[\"CLI Layer\"]\n        CLI[\"video_object_remover.py: run_cli()\"]\n        PROG[\"progress_reporter()\"]\n        INT_ROI[\"select_roi_interactively()\"]\n    end\n\n    subgraph S_CORE[\"Core Processing Engine\"]\n        PROC[\"VideoProcessor<br/>(src/core/video_processor.py)\"]\n        PROC_V[\"process_video()\"]\n        PROC_F[\"process_single_frame()\"]\n        LIGHT[\"enhance_lighting_and_contrast()<br/>[Floor Lift Remapping]\"]\n        TRACK[\"_init_tracker()<br/>[OpenCV MIL Tracker]\"]\n        MODE{\"ProcessingMode<br/>(INPAINT / MOSAIC / BLUR / BLACKOUT)\"}\n    end\n\n    subgraph S_IO[\"Video I/O & Metadata\"]\n        READER[\"VideoReader<br/>(src/industrial_ai/video_reader.py)\"]\n        META[\"get_metadata()\"]\n        KEYS[\"extract_keyframes()\"]\n    end\n\n    %% Kết nối\n    MAIN -->|Khởi chạy GUI| APP\n    MAIN -->|Khởi chạy CLI| CLI\n\n    APP --> REDRAW\n    APP --> PARAM\n    APP --> ROI_SEL\n    APP -->|Khởi tạo & Điều khiển| PROC\n    APP -->|Trích xuất thông số| READER\n\n    CLI --> PROG\n    CLI --> INT_ROI\n    CLI -->|Thực thi batch| PROC\n\n    PROC --> PROC_V\n    PROC_V -->|Vòng lặp từng frame| PROC_F\n    PROC_F -->|1. Tăng sáng vùng tối| LIGHT\n    PROC_F -->|2. Bám vết vật thể| TRACK\n    PROC_F -->|3. Áp dụng hiệu ứng che| MODE\n\n    READER --> META\n    READER --> KEYS\n"
+  },
+  "pipeline": {
+    "title": "Luồng Dữ Liệu Khung Hình (Frame Pipeline)",
+    "desc": "Quy trình xử lý từng frame hình ảnh từ Video vào đến Video xuất ra",
+    "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#dcfce7', 'primaryBorderColor': '#16a34a', 'primaryTextColor': '#0f172a', 'secondaryColor': '#fef9c3', 'secondaryBorderColor': '#ca8a04', 'secondaryTextColor': '#0f172a', 'tertiaryColor': '#fee2e2', 'tertiaryBorderColor': '#dc2626', 'tertiaryTextColor': '#0f172a', 'lineColor': '#334155', 'fontSize': '15px' }, 'look': 'handDrawn'}}%%\nflowchart LR\n    IN_FRAME[\"Khung hình gốc<br/>(Raw Frame / BGR)\"] --> STEP1[\"1. Floor Lift Remapping<br/>(Tăng sáng vùng tối, giữ chi tiết)\"]\n    \n    STEP1 --> STEP2{\"2. Có ROI / Tracker?\"}\n    \n    STEP2 -->|Bám vết thành công| STEP3[\"Cập nhật tọa độ ROI Tracker\"]\n    STEP2 -->|Không bật tracker| STEP3_DIRECT[\"Dùng ROI tĩnh\"]\n    \n    STEP3 --> STEP4{\"3. Chế độ (Mode)?\"}\n    STEP3_DIRECT --> STEP4\n\n    STEP4 -->|INPAINT| M1[\"Inpainting Telea / NS<br/>(Xóa và lấp đầy nền)\"]\n    STEP4 -->|MOSAIC| M2[\"Mosaic Pixelation<br/>(Làm mờ dạng điểm ảnh)\"]\n    STEP4 -->|BLUR| M3[\"Gaussian Blur<br/>(Làm mờ mịn)\"]\n    STEP4 -->|BLACKOUT| M4[\"Blackout<br/>(Bôi đen hoàn toàn)\"]\n\n    M1 --> STEP5[\"Ghép vùng bảo vệ<br/>(Exclude ROI nếu có)\"]\n    M2 --> STEP5\n    M3 --> STEP5\n    M4 --> STEP5\n\n    STEP5 --> OUT_FRAME[\"Khung hình hoàn thiện<br/>➜ Ghi vào VideoWriter\"]\n"
+  },
+  "classes": {
+    "title": "Sơ Đồ Lớp & Phương Thức (Class Diagram)",
+    "desc": "Cấu trúc hướng đối tượng của các class trong dự án",
+    "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#ede9fe', 'primaryBorderColor': '#7c3aed', 'primaryTextColor': '#0f172a', 'lineColor': '#334155', 'fontSize': '14px' }, 'look': 'handDrawn'}}%%\nclassDiagram\n    direction TB\n    class VideoProcessor {\n        +ProcessingMode mode\n        +enhance_params: dict\n        +tracker: cv2.Tracker\n        +process_single_frame(frame, roi, exclude_roi) ndarray\n        +process_video(input_path, output_path, roi, start_time, end_time, callback) bool\n        +enhance_lighting_and_contrast(frame, floor_lift, mid_scale, shadow_range) ndarray\n        +_init_tracker(frame, roi)\n    }\n\n    class VideoObjectRemoverApp {\n        -VideoProcessor processor\n        -VideoReader reader\n        -Tk root\n        -Canvas canvas\n        +_setup_ui()\n        +_load_video(path)\n        +_on_canvas_click(event)\n        +_on_canvas_drag(event)\n        +_on_enhance_param_change()\n        +_start_processing()\n    }\n\n    class VideoReader {\n        -str video_path\n        -cv2.VideoCapture cap\n        +get_metadata() dict\n        +extract_keyframes(interval_sec) list\n        +release()\n    }\n\n    class ProcessingMode {\n        <<enumeration>>\n        INPAINT_TELEA\n        INPAINT_NS\n        MOSAIC\n        GAUSSIAN_BLUR\n        BLACKOUT\n    }\n\n    VideoObjectRemoverApp ..> VideoProcessor : Uses\n    VideoObjectRemoverApp ..> VideoReader : Uses\n    VideoProcessor ..> ProcessingMode : Uses\n"
+  },
+  "ast_live": {
+    "title": "Quét AST Tự Động (Live Code AST)",
+    "desc": "Sơ đồ phụ thuộc & hàm được trích xuất động trực tiếp từ source code hiện tại",
+    "code": "%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#fef3c7', 'primaryBorderColor': '#d97706', 'primaryTextColor': '#0f172a', 'secondaryColor': '#e0f2fe', 'secondaryBorderColor': '#0284c7', 'secondaryTextColor': '#0f172a', 'lineColor': '#334155', 'fontSize': '14px' }, 'look': 'handDrawn'}}%%\nflowchart TD\n    subgraph SUB_0[\"📁 src/core/video_processor.py\"]\n        CLS_ProcessingMode[\"🏛️ class <b>ProcessingMode</b>\"]\n        CLS_VideoProcessor[\"🏛️ class <b>VideoProcessor</b><br/>• get_video_info<br/>• get_video_start_datetime<br/>• format_timecode<br/>• format_realtime\"]\n        FUNC_get_video_info_1[\"⚙️ def <b>get_video_info()</b>\"]\n        FUNC_get_video_start_datetime_1[\"⚙️ def <b>get_video_start_datetime()</b>\"]\n        FUNC_format_timecode_1[\"⚙️ def <b>format_timecode()</b>\"]\n        FUNC_format_realtime_1[\"⚙️ def <b>format_realtime()</b>\"]\n        FUNC_draw_timeline_overlay_1[\"⚙️ def <b>draw_timeline_overlay()</b>\"]\n        FUNC_create_tracker_1[\"⚙️ def <b>create_tracker()</b>\"]\n        FUNC_enhance_lighting_and_contrast_1[\"⚙️ def <b>enhance_lighting_and_contrast()</b>\"]\n        FUNC_process_single_frame_1[\"⚙️ def <b>process_single_frame()</b>\"]\n        FUNC_process_video_1[\"⚙️ def <b>process_video()</b>\"]\n        FUNC_resize_with_letterbox_1[\"⚙️ def <b>resize_with_letterbox()</b>\"]\n        FUNC_concatenate_videos_1[\"⚙️ def <b>concatenate_videos()</b>\"]\n    end\n    subgraph SUB_1[\"📁 src/gui/app_gui.py\"]\n        CLS_VideoObjectRemoverApp[\"🏛️ class <b>VideoObjectRemoverApp</b><br/>• __init__<br/>• _setup_style<br/>• _build_ui<br/>• _browse_video\"]\n        FUNC__setup_style_2[\"⚙️ def <b>_setup_style()</b>\"]\n        FUNC__build_ui_2[\"⚙️ def <b>_build_ui()</b>\"]\n        FUNC__browse_video_2[\"⚙️ def <b>_browse_video()</b>\"]\n        FUNC__on_timeline_toggle_2[\"⚙️ def <b>_on_timeline_toggle()</b>\"]\n        FUNC__load_frame_2[\"⚙️ def <b>_load_frame()</b>\"]\n        FUNC__toggle_play_preview_2[\"⚙️ def <b>_toggle_play_preview()</b>\"]\n        FUNC__play_preview_2[\"⚙️ def <b>_play_preview()</b>\"]\n        FUNC__pause_preview_2[\"⚙️ def <b>_pause_preview()</b>\"]\n        FUNC__next_preview_frame_2[\"⚙️ def <b>_next_preview_frame()</b>\"]\n        FUNC__seek_relative_2[\"⚙️ def <b>_seek_relative()</b>\"]\n        FUNC__on_mode_change_2[\"⚙️ def <b>_on_mode_change()</b>\"]\n        FUNC__on_shadow_lift_change_2[\"⚙️ def <b>_on_shadow_lift_change()</b>\"]\n        FUNC__on_dark_boost_change_2[\"⚙️ def <b>_on_dark_boost_change()</b>\"]\n        FUNC__on_clahe_change_2[\"⚙️ def <b>_on_clahe_change()</b>\"]\n        FUNC__on_sharpen_change_2[\"⚙️ def <b>_on_sharpen_change()</b>\"]\n        FUNC__on_enhance_param_change_2[\"⚙️ def <b>_on_enhance_param_change()</b>\"]\n        FUNC__get_effective_exclude_roi_2[\"⚙️ def <b>_get_effective_exclude_roi()</b>\"]\n        FUNC__on_slider_move_2[\"⚙️ def <b>_on_slider_move()</b>\"]\n        FUNC__on_canvas_resize_2[\"⚙️ def <b>_on_canvas_resize()</b>\"]\n        FUNC__redraw_canvas_2[\"⚙️ def <b>_redraw_canvas()</b>\"]\n        FUNC__on_mouse_down_2[\"⚙️ def <b>_on_mouse_down()</b>\"]\n        FUNC__on_mouse_drag_2[\"⚙️ def <b>_on_mouse_drag()</b>\"]\n        FUNC__on_mouse_up_2[\"⚙️ def <b>_on_mouse_up()</b>\"]\n        FUNC__start_process_thread_2[\"⚙️ def <b>_start_process_thread()</b>\"]\n        FUNC__stop_process_2[\"⚙️ def <b>_stop_process()</b>\"]\n        FUNC__run_video_processing_2[\"⚙️ def <b>_run_video_processing()</b>\"]\n        FUNC__update_progress_2[\"⚙️ def <b>_update_progress()</b>\"]\n        FUNC__finish_processing_2[\"⚙️ def <b>_finish_processing()</b>\"]\n        FUNC__build_merge_tab_ui_2[\"⚙️ def <b>_build_merge_tab_ui()</b>\"]\n        FUNC__browse_merge_videos_2[\"⚙️ def <b>_browse_merge_videos()</b>\"]\n        FUNC__refresh_merge_treeview_2[\"⚙️ def <b>_refresh_merge_treeview()</b>\"]\n        FUNC__remove_selected_merge_video_2[\"⚙️ def <b>_remove_selected_merge_video()</b>\"]\n        FUNC__clear_all_merge_videos_2[\"⚙️ def <b>_clear_all_merge_videos()</b>\"]\n        FUNC__move_up_merge_video_2[\"⚙️ def <b>_move_up_merge_video()</b>\"]\n        FUNC__move_down_merge_video_2[\"⚙️ def <b>_move_down_merge_video()</b>\"]\n        FUNC__browse_merge_output_path_2[\"⚙️ def <b>_browse_merge_output_path()</b>\"]\n        FUNC__start_merge_thread_2[\"⚙️ def <b>_start_merge_thread()</b>\"]\n        FUNC__stop_merge_process_2[\"⚙️ def <b>_stop_merge_process()</b>\"]\n        FUNC__run_video_merge_2[\"⚙️ def <b>_run_video_merge()</b>\"]\n        FUNC__update_merge_progress_2[\"⚙️ def <b>_update_merge_progress()</b>\"]\n        FUNC__finish_merge_processing_2[\"⚙️ def <b>_finish_merge_processing()</b>\"]\n        FUNC__on_left_canvas_resize_2[\"⚙️ def <b>_on_left_canvas_resize()</b>\"]\n        FUNC__on_mousewheel_2[\"⚙️ def <b>_on_mousewheel()</b>\"]\n        FUNC_gui_progress_2[\"⚙️ def <b>gui_progress()</b>\"]\n        FUNC_check_cancelled_2[\"⚙️ def <b>check_cancelled()</b>\"]\n        FUNC_merge_progress_2[\"⚙️ def <b>merge_progress()</b>\"]\n    end\n    subgraph SUB_2[\"📁 src/industrial_ai/video_reader.py\"]\n        CLS_VideoReader[\"🏛️ class <b>VideoReader</b><br/>• __init__<br/>• get_metadata<br/>• extract_keyframes<br/>• release\"]\n        FUNC___init___3[\"⚙️ def <b>__init__()</b>\"]\n        FUNC_get_metadata_3[\"⚙️ def <b>get_metadata()</b>\"]\n        FUNC_extract_keyframes_3[\"⚙️ def <b>extract_keyframes()</b>\"]\n        FUNC_release_3[\"⚙️ def <b>release()</b>\"]\n        FUNC___enter___3[\"⚙️ def <b>__enter__()</b>\"]\n        FUNC___exit___3[\"⚙️ def <b>__exit__()</b>\"]\n    end\n    subgraph SUB_3[\"📁 src/cli/video_object_remover.py\"]\n        FUNC_select_roi_interactively_4[\"⚙️ def <b>select_roi_interactively()</b>\"]\n        FUNC_progress_reporter_4[\"⚙️ def <b>progress_reporter()</b>\"]\n        FUNC_run_cli_4[\"⚙️ def <b>run_cli()</b>\"]\n    end\n    subgraph SUB_4[\"📁 main.py\"]\n        FUNC_main_5[\"⚙️ def <b>main()</b>\"]\n    end\n    CLS_VideoObjectRemoverApp -->|Controls| CLS_VideoProcessor\n    CLS_VideoObjectRemoverApp -->|Reads Video| CLS_VideoReader"
+  }
+};
+
+    let currentTab = Object.keys(diagrams)[0];
+    let panzoomInstance = null;
+
+    // Khởi tạo Mermaid v11 với chế độ Hand-Drawn (Rough.js)
+    mermaid.initialize({
+      startOnLoad: false,
+      look: 'handDrawn',
+      theme: 'base',
+      fontFamily: '"Shantell Sans", "Caveat", "Virgil", cursive, sans-serif',
+      themeVariables: {
+        fontFamily: '"Shantell Sans", "Caveat", "Virgil", cursive, sans-serif',
+        fontSize: '15px',
+        primaryColor: '#e0f2fe',
+        primaryBorderColor: '#0284c7',
+        primaryTextColor: '#0f172a',
+        secondaryColor: '#fef3c7',
+        secondaryBorderColor: '#d97706',
+        secondaryTextColor: '#0f172a',
+        tertiaryColor: '#f3e8ff',
+        tertiaryBorderColor: '#9333ea',
+        tertiaryTextColor: '#0f172a',
+        lineColor: '#334155',
+        edgeLabelBackground: '#ffffff'
+      }
+    });
+
+    const codeArea = document.getElementById('mermaid-code');
+    const descArea = document.getElementById('tab-desc');
+    const tabsContainer = document.getElementById('tabs-container');
+    const diagramOutput = document.getElementById('diagram-output');
+    const errorBox = document.getElementById('error-msg');
+
+    // Tạo Tabs
+    function setupTabs() {
+      tabsContainer.innerHTML = '';
+      Object.keys(diagrams).forEach(key => {
+        const btn = document.createElement('button');
+        btn.className = `tab-btn ${key === currentTab ? 'active' : ''}`;
+        btn.textContent = diagrams[key].title.split('(')[0].trim();
+        btn.onclick = () => selectTab(key);
+        tabsContainer.appendChild(btn);
+      });
+    }
+
+    function selectTab(key) {
+      currentTab = key;
+      setupTabs();
+      descArea.textContent = diagrams[key].desc;
+      codeArea.value = diagrams[key].code.trim();
+      renderDiagram();
+    }
+
+    async function renderDiagram() {
+      const code = codeArea.value.trim();
+      errorBox.style.display = 'none';
+      diagramOutput.innerHTML = '<div style="font-family: var(--font-hand); font-size: 1.2rem; color: #64748b;">⏳ Đang vẽ sơ đồ phác thảo...</div>';
+
+      try {
+        const id = 'render-' + Date.now();
+        const { svg } = await mermaid.render(id, code);
+        diagramOutput.innerHTML = svg;
+
+        // Reset & Khởi tạo lại Panzoom
+        if (panzoomInstance) {
+          panzoomInstance.destroy();
+        }
+        panzoomInstance = Panzoom(document.getElementById('diagram-output'), {
+          maxScale: 4,
+          minScale: 0.3,
+          contain: 'outside'
+        });
+
+        document.getElementById('panzoom-container').addEventListener('wheel', panzoomInstance.zoomWithWheel);
+
+        // Reset vị trí trung tâm
+        panzoomInstance.reset();
+      } catch (err) {
+        console.error(err);
+        errorBox.style.display = 'block';
+        errorBox.textContent = '❌ Lỗi cú pháp Mermaid: ' + (err.message || err);
+      }
+    }
+
+    // Các sự kiện UI
+    document.getElementById('btn-render').onclick = renderDiagram;
+    
+    document.getElementById('btn-copy').onclick = () => {
+      navigator.clipboard.writeText(codeArea.value);
+      alert('Đã sao chép mã Mermaid vào clipboard!');
+    };
+
+    document.getElementById('toggle-sidebar').onclick = () => {
+      document.getElementById('sidebar').classList.toggle('collapsed');
+    };
+
+    // Zoom Controls
+    document.getElementById('zoom-in').onclick = () => panzoomInstance && panzoomInstance.zoomIn();
+    document.getElementById('zoom-out').onclick = () => panzoomInstance && panzoomInstance.zoomOut();
+    document.getElementById('zoom-reset').onclick = () => panzoomInstance && panzoomInstance.reset();
+
+    // Export SVG
+    document.getElementById('export-svg').onclick = () => {
+      const svgElement = diagramOutput.querySelector('svg');
+      if (!svgElement) return alert('Chưa có sơ đồ để xuất!');
+      
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `architecture-${currentTab}.svg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // Export PNG
+    document.getElementById('export-png').onclick = () => {
+      const svgElement = diagramOutput.querySelector('svg');
+      if (!svgElement) return alert('Chưa có sơ đồ để xuất!');
+
+      const svgData = new XMLSerializer().serializeToString(svgElement);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+
+      const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = () => {
+        const scale = 2; // Độ nét cao 2x
+        canvas.width = (svgElement.clientWidth || 1200) * scale;
+        canvas.height = (svgElement.clientHeight || 800) * scale;
+        
+        ctx.fillStyle = '#fdfbf7'; // Nền giấy Excalidraw
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        const pngUrl = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = pngUrl;
+        a.download = `architecture-${currentTab}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+      img.src = url;
+    };
+
+    // Khởi chạy ban đầu
+    window.addEventListener('DOMContentLoaded', () => {
+      selectTab(currentTab);
+    });
+  </script>
+</body>
+</html>
